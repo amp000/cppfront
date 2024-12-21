@@ -184,6 +184,15 @@ static cmdline_processor::register_flag cmd_no_rtti(
     []{ flag_no_rtti = true; }
 );
 
+// for -split flag
+static auto flag_split_header_file = false;
+static cmdline_processor::register_flag cmd_split_header_file(
+    9,
+    "split",
+    "Split .cpp2 to .h and .cpp",
+    []{ flag_split_header_file = true; }
+);
+
 struct text_with_pos{
     std::string     text;
     source_position pos;
@@ -628,6 +637,9 @@ public:
             && "ICE: tried to call .open twice"
         );
         cpp1_filename = cpp1_filename_;
+
+        auto h1_filename = cpp1_filename.substr(0, std::ssize(cpp2_filename_) - 5) + ".h";
+
         if (cpp1_filename == "stdout") {
             out = &std::cout;
         }
@@ -650,6 +662,18 @@ public:
         assert(cpp1_filename.ends_with(".h"));
         out_file.close();
         out_file.open(cpp1_filename + "pp");
+    }
+        
+    // for -split flag
+    auto reopen(std::string new_filename)
+        -> void
+    {
+        assert(
+            is_open()
+            && "ICE: tried to call .reopen without first calling .open"
+        );
+        out_file.close();
+        out_file.open(new_filename);
     }
 
     auto is_open()
@@ -1260,11 +1284,17 @@ public:
         //  Now we'll open the Cpp1 file
         //  Default to stdout if input is stdin
         auto cpp1_filename = std::string{"stdout"};
+
+        // for -split flag
+        auto h1_filename = std::string{"stdout"};
         if (sourcefile != "stdin") {
             assert(sourcefile.ends_with("2"));
             cpp1_filename = sourcefile.substr(0, std::ssize(sourcefile) - 1);
+
+            // for -split flag
+            h1_filename = cpp1_filename.substr(0, std::ssize(sourcefile) - 5) + ".h";        
         }
-        
+
         //  Use explicit filename override if present, otherwise strip leading path
         if (!flag_cpp1_filename.empty()) {
             cpp1_filename = flag_cpp1_filename;
@@ -1272,10 +1302,18 @@ public:
         else if (cpp1_filename != "stdout") {
             cpp1_filename = std::filesystem::path(cpp1_filename).filename().string();
         }
+        
+        // for -split flag
+        auto out_filename = flag_split_header_file ? h1_filename : cpp1_filename;
 
         printer.open(
             sourcefile,
-            cpp1_filename,
+            // commented out for -split flag
+            // cpp1_filename,
+
+            // for -split flag
+            out_filename,            
+
             tokens.get_comments(),
             source,
             parser
@@ -1283,7 +1321,11 @@ public:
         if (!printer.is_open()) {
             errors.emplace_back(
                 source_position{},
-                "could not open output file " + cpp1_filename
+                // commented out for -split flag
+                // "could not open output file " + cpp1_filename
+
+                // for -split flag
+                "could not open output file " + out_filename
             );
             return {};
         }
@@ -1313,7 +1355,12 @@ public:
                 );
             }
             printer.print_extra( "\n" );
-            if (cpp1_filename.back() == 'h') {
+            // commented out for -split flag
+            // if (cpp1_filename.back() == 'h') {
+
+            // for -split flag
+            if (cpp1_filename.back() == 'h' || flag_split_header_file) {     
+                   
                 printer.print_extra( "#ifndef " + cpp1_FILENAME+"_CPP2\n");
                 printer.print_extra( "#define " + cpp1_FILENAME+"_CPP2" + "\n\n" );
             }
@@ -1537,6 +1584,13 @@ public:
         //
         printer.finalize_phase();
         printer.next_phase();
+        
+        // for -split flag
+        if (flag_split_header_file) {
+            printer.print_extra( "\n#endif\n" );
+            printer.reopen(cpp1_filename);
+            printer.print_extra( "\n#include \"" + h1_filename + "\"\n\n" );
+        }
 
         if (
             source.has_cpp2()

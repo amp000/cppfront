@@ -638,8 +638,6 @@ public:
         );
         cpp1_filename = cpp1_filename_;
 
-        auto h1_filename = cpp1_filename.substr(0, std::ssize(cpp2_filename_) - 5) + ".h";
-
         if (cpp1_filename == "stdout") {
             out = &std::cout;
         }
@@ -1284,15 +1282,9 @@ public:
         //  Now we'll open the Cpp1 file
         //  Default to stdout if input is stdin
         auto cpp1_filename = std::string{"stdout"};
-
-        // for -split flag
-        auto h1_filename = std::string{"stdout"};
         if (sourcefile != "stdin") {
             assert(sourcefile.ends_with("2"));
             cpp1_filename = sourcefile.substr(0, std::ssize(sourcefile) - 1);
-
-            // for -split flag
-            h1_filename = cpp1_filename.substr(0, std::ssize(sourcefile) - 5) + ".h";        
         }
 
         //  Use explicit filename override if present, otherwise strip leading path
@@ -1302,6 +1294,9 @@ public:
         else if (cpp1_filename != "stdout") {
             cpp1_filename = std::filesystem::path(cpp1_filename).filename().string();
         }
+
+        // for -split flag
+        auto h1_filename = cpp1_filename.substr(0, std::ssize(sourcefile) - 5) + ".h";        
         
         // for -split flag
         auto out_filename = flag_split_header_file ? h1_filename : cpp1_filename;
